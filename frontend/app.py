@@ -59,6 +59,14 @@ st.divider()
 # ── Layout ─────────────────────────────────────────────────────────────────
 left, right = st.columns([1, 2])
 
+# ── Agents Definition ──────────────────────────────────────────────────────
+agents = [
+    {"name": "🧭 Planner Agent", "desc": "Breaks task into subtasks"},
+    {"name": "🔍 Researcher Agent", "desc": "Parallel asyncio research"},
+    {"name": "⚙️ Executor Agent", "desc": "Processes & structures data"},
+    {"name": "📝 Synthesizer Agent", "desc": "Writes final report"},
+]
+
 # ════════════════════════════════════════════════
 # LEFT — Input + Agent Status
 # ════════════════════════════════════════════════
@@ -92,24 +100,36 @@ with left:
     st.divider()
     st.markdown("### 🔄 Agent Pipeline")
 
-    agents = [
-        {"name": "🧭 Planner Agent", "desc": "Breaks task into subtasks"},
-        {"name": "🔍 Researcher Agent", "desc": "Parallel asyncio research"},
-        {"name": "⚙️ Executor Agent", "desc": "Processes & structures data"},
-        {"name": "📝 Synthesizer Agent", "desc": "Writes final report"},
-    ]
-
     agent_placeholders = []
     for agent in agents:
         placeholder = st.empty()
         agent_placeholders.append(placeholder)
-        placeholder.markdown(f"""
-        <div class="agent-card agent-waiting">
-            <b>{agent['name']}</b><br>
-            <small style="color:#64748b">{agent['desc']}</small><br>
-            <small style="color:#475569">⏳ Waiting...</small>
-        </div>
-        """, unsafe_allow_html=True)
+
+        # ✅ FIX: Show correct status based on session state
+        if st.session_state.result:
+            placeholder.markdown(f"""
+            <div class="agent-card agent-done">
+                <b>{agent['name']}</b><br>
+                <small style="color:#64748b">{agent['desc']}</small><br>
+                <small style="color:#10b981">✅ Complete</small>
+            </div>
+            """, unsafe_allow_html=True)
+        elif st.session_state.polling:
+            placeholder.markdown(f"""
+            <div class="agent-card agent-running">
+                <b>{agent['name']}</b><br>
+                <small style="color:#64748b">{agent['desc']}</small><br>
+                <small style="color:#f59e0b">⚡ Running...</small>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            placeholder.markdown(f"""
+            <div class="agent-card agent-waiting">
+                <b>{agent['name']}</b><br>
+                <small style="color:#64748b">{agent['desc']}</small><br>
+                <small style="color:#475569">⏳ Waiting...</small>
+            </div>
+            """, unsafe_allow_html=True)
 
     # ── Architecture Info ──────────────────────────────────────────────────
     st.divider()
@@ -157,6 +177,7 @@ with right:
     if run_button and task_input.strip():
         st.session_state.result = None
         st.session_state.job_id = None
+        st.session_state.polling = False
 
         try:
             # POST to /run — returns job_id INSTANTLY
@@ -171,16 +192,6 @@ with right:
                 st.session_state.job_id = data["job_id"]
                 st.session_state.polling = True
                 st.session_state.history.append(task_input)
-
-                # Show all agents as running
-                for i, agent in enumerate(agents):
-                    agent_placeholders[i].markdown(f"""
-                    <div class="agent-card agent-running">
-                        <b>{agent['name']}</b><br>
-                        <small style="color:#64748b">{agent['desc']}</small><br>
-                        <small style="color:#f59e0b">⚡ Running...</small>
-                    </div>
-                    """, unsafe_allow_html=True)
 
                 results_placeholder.markdown(f"""
                 <div style="background:#1e293b; border-radius:12px; padding:24px; border:1px solid #334155; text-align:center">
@@ -206,7 +217,7 @@ with right:
             status_text = st.empty()
 
         poll_count = 0
-        max_polls = 60  # Poll for max 2 minutes
+        max_polls = 60
 
         while st.session_state.polling and poll_count < max_polls:
             try:
@@ -217,7 +228,6 @@ with right:
                 status_data = status_response.json()
                 job_status = status_data.get("status", "pending")
 
-                # Update progress bar
                 poll_count += 1
                 progress = min(int((poll_count / max_polls) * 90), 90)
                 progress_bar.progress(progress)
@@ -229,22 +239,10 @@ with right:
                     status_text.markdown("⚡ Worker picked up task — agents running...")
 
                 elif job_status == "success":
-                    # Done!
                     progress_bar.progress(100)
                     status_text.markdown("✅ AgentFlow Complete!")
                     st.session_state.result = status_data.get("result", {})
                     st.session_state.polling = False
-
-                    # Mark all agents done
-                    for i, agent in enumerate(agents):
-                        agent_placeholders[i].markdown(f"""
-                        <div class="agent-card agent-done">
-                            <b>{agent['name']}</b><br>
-                            <small style="color:#64748b">{agent['desc']}</small><br>
-                            <small style="color:#10b981">✅ Complete</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-
                     st.rerun()
 
                 elif job_status == "failure":
@@ -252,7 +250,6 @@ with right:
                     st.session_state.polling = False
                     break
 
-                # Wait 2 seconds before polling again
                 time.sleep(2)
 
             except Exception as e:
@@ -302,6 +299,8 @@ with right:
                 unsafe_allow_html=True
             )
 
+        # Clear button
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🗑️ Clear Results", use_container_width=True):
             st.session_state.result = None
             st.session_state.job_id = None
