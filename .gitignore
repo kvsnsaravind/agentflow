@@ -1,0 +1,7 @@
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+backend/__pycache__/
+backend/agents/__pycache__/
